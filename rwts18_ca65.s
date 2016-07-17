@@ -3,7 +3,6 @@
 ; https://www.youtube.com/watch?v=ScFrXoD99hw
 ; Transcribed by Michael Pohoreski, AppleWin "Debugger" Developer
 ; Assembler: ca65
-.feature c_comments
 .feature labels_without_colons
 .feature leading_dot_in_identifiers
 .P02    ; normal 6502
@@ -11,9 +10,11 @@
 .macro ADR val
     .addr val
 .endmacro
-
+; Force APPLE 'text' to have high bit on; Will display as NORMAL characters
 .macro ASC text
-    .byte text
+    .repeat .strlen(text), I
+        .byte   .strat(text, I) | $80
+    .endrep
 .endmacro
 
 .macro BYT b1,b2,b3,b4
@@ -92,7 +93,6 @@
 
 .macro USR filename, origin
 .endmacro
-
             __MAIN = $D000
 ; DOS3.3 retarded design -- stores file's meta as first 4 bytes in binary file
 ; Remove these 2 if running under ProDOS
@@ -203,15 +203,15 @@ CHECKMOD    HEX "96"
 ; 40 microseconds, # given in Y.
 ;
 WRITETC     LDA #$FF            ; Write Timed Cycles?
-            STA $C08F,X     ; 5
-            ORA $C08C,X     ; 4
+            STA $C08F,X     ; 5     Q7H = DRIVE_MODE_W
+            ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
             ROL TEMP        ; 5
 _109        NOP             ; 2     ^0
             JSR _RTS        ;12
             JSR _RTS        ;12     = 40
-            STA $C08C,X     ; 5
+            STA $C08C,X     ; 5     Q6L = DRIVE_LATCH_R
 ;                           ;
-            ORA $C08C,X     ; 4
+            ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
             DEY             ; 2
             BNE _109        ; 3/2     <0
 ;-----------                ;
@@ -223,9 +223,9 @@ _119        LDA SOFTSYNC,Y  ; 4     ^1
             NOP             ; 2
             NOP             ; 2
             LDX SLOT        ; 3
-            STA $C08D,X     ; 5
+            STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
 ;                           ;
-            ORA $C08C,X     ; 4
+            ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
             LDX SLOT        ; 3
             BNE _119        ; 3       <1
 ;-----------
@@ -234,9 +234,9 @@ _132        NOP             ; 2     ^2
             NOP             ; 2
             NOP             ; 2
 IDMOD0      LDA #BRBUNDID   ; 2 Self-modified @ L#792
-            STA $C08D,X     ; 5
+            STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
 ;                           ;
-            ORA $C08C,X     ; 4
+            ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
             LDY #00         ; 2
             STY CHECKSUM    ; 3
 ;                           ;
@@ -246,9 +246,9 @@ _143        LDA (LEFT),Y    ; 5     ^0
             STA CHECKSUM    ; 3
             LDA NIBBLES,X   ; 4
             NOP             ; 2
-Q6HMOD0     STA $C0ED       ; 4     DRIVE_LATCH_W Self-modifed @ L#517
+Q6HMOD0     STA $C0ED       ; 4     Q6H = DRIVE_LATCH_W Self-modifed @ L#517
 ;                           ;
-Q6LMOD0     ORA $C0EC       ; 4     DRIVE_LATCH_R Self-modifed @ L#510
+Q6LMOD0     ORA $C0EC       ; 4     Q6L = DRIVE_LATCH_R Self-modifed @ L#510
             LDA (BUF1),Y    ; 4
             AND #$3F        ; 2     Disk nibbles 6&2 = 64
             TAX             ; 2
@@ -256,9 +256,9 @@ Q6LMOD0     ORA $C0EC       ; 4     DRIVE_LATCH_R Self-modifed @ L#510
             STA CHECKSUM    ; 3
             LDA NIBBLES,X   ; 4
             LDX SLOTABS     ; 4
-            STA $C08D,X     ; 5
+            STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
 ;                           ;
-            ORA $C08C,X     ; 4     DRIVE_LATCH_R
+            ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
             LDA (BUF2),Y    ; 5
             AND #$3F        ; 2
             TAX             ; 2
@@ -266,19 +266,19 @@ Q6LMOD0     ORA $C0EC       ; 4     DRIVE_LATCH_R Self-modifed @ L#510
             STA CHECKSUM    ; 3
             LDA NIBBLES,X   ; 4
             LDX SLOTABS     ; 4
-            STA $C08D,X     ; 5     DRIVE_LATCH_W
+            STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
 ;                           ;
-            ORA $C08C,X     ; 4
-            LDA (BUF3),Y     ; 5
+            ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+            LDA (BUF3),Y    ; 5
             AND #$3F        ; 2
             TAX             ; 2
             EOR CHECKSUM    ; 3
             STA CHECKSUM    ; 3
             LDA NIBBLES,X   ; 4
             LDX SLOTABS     ; 4
-            STA $C08D,X     ; 5
+            STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
 ;                           ;
-            ORA $C08C,X     ; 4
+            ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
             INY             ; 2
             BNE _143        ; 3/2     <0
 ;                           ;
@@ -291,8 +291,8 @@ Q6LMOD0     ORA $C0EC       ; 4     DRIVE_LATCH_R Self-modifed @ L#510
             LDA #SNX
             JSR WRNIBBLE        ; v L#200
 ;
-            LDA $C08E,X
-            LDA $C08C,X
+            LDA $C08E,X         ; Q7L = DRIVE_MODE_R
+            LDA $C08C,X         ; Q6L = DRIVE_LATCH_R
             RTS
 ;
 ; Write a nibble
@@ -301,9 +301,9 @@ WRNIBBLE    NOP             ; 2 Cycles = 18
             NOP             ; 2
             CLC             ; 2
 WRNIBBL2    LDX SLOT        ; 3 Cycles = 12
-            STA $C08D,X     ; 5
+            STA $C08D,X     ; 5 ; Q6H = DRIVE_LATCH_W
 ;                           ;
-            ORA $C08C,X     ; 4
+            ORA $C08C,X     ; 4 ; Q6L = DRIVE_LATCH_R
             RTS
 ;-----------
 ;
@@ -354,8 +354,8 @@ _252        STA SYNCMOD+1       ; ^3
 ; Make disk controller happy
 ; by checking for write protect
 ;
-            LDA $C08D,X
-            LDA $C08E,X
+            LDA $C08D,X         ; Q6H = DRIVE_LATCH_W
+            LDA $C08E,X         ; Q7L = DRIVE_MODE_R
             SEC
             BMI _265            ;   >4
             JSR WRITETC
@@ -613,7 +613,7 @@ PREP        STA PREPSLOT
             STA Q6LMOD3+1       ; Self-modifies L#429
             STA Q6LMOD4+1       ; Self-modifies L#439
             STA Q6LMOD5+1       ; Self-modifies L#451
-            ORA #$1             ; $C08D,X = $C0ED =Q6H =  DRIVE_LATCH_W
+            ORA #$1             ; $C08D,X = $C0ED = Q6H = DRIVE_LATCH_W
             STA Q6HMOD0+1       ; Self-modifies L#149
 ;
 ; Set up DENIBBL table, used by READ
