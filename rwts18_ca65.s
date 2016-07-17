@@ -766,13 +766,13 @@ CMDTABLE    ADR CMDRIVON      ; Drive On       L#670
 ;
 ; DRIVE ON
 ; <drive#>,<delay, in 1/10ths [of] sec[onds]>
-;
+; NOTE: Drive = 1 or 2
 CMDRIVON    LDX SLOT
-            JSR GETBYTE
+            JSR GETBYTE         ; A=1 (Drive 1) or 2 (Drive 2)
             ORA SLOT
-            TAY
-            LDA $C089,Y         ; DRIVE_MOTOR_ON
-            LDA $C089,X         ; DRIVE_MOTOR_ON -- Why duplicate but ,X ???
+            TAY                 ; Roland originally had $C089 but $C08A-1 is clearer
+            LDA $C08A-1,Y       ; DRIVE_MOTOR_ON -> DRIVE_SELECT
+            LDA $C089,X         ; DRIVE_MOTOR_ON
 ;
 ; Delay 1/10ths of seconds
 ;
