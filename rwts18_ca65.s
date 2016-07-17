@@ -63,7 +63,7 @@
     .byte val
 .endmacro
 
-; Convert a text string to bytes. Usage: HEX "A900"
+; Convert a text string to bytes. Example: HEX "A900"
 .macro HEX text
     .local c1, c2, len
     len .set .strlen(text)
