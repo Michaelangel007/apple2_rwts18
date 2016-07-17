@@ -70,7 +70,7 @@
 
     .if ((len & 1) <> 0)
         .error "HEX bytes must be even length -- one nibble too short"
-        .out .sprintf( "Lenght: %d", n )
+        .out .sprintf( "Length: %d", n )
         .out .sprintf( "String: %s", text )
     .else
         .repeat len/2, I
