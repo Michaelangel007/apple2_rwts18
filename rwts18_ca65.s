@@ -778,18 +778,18 @@ CMDRIVON    LDX SLOT
 ;
             JSR GETBYTE
             BEQ _692            ;   >2
-            STA TMP0
-_682        LDY #$17            ; ^0
-            LDX #0
+            STA TMP0            ;       $00E0
+_682        LDY #$17            ; ^0    if delay=1
+            LDX #0              ;       delay * < [ 23 * { 256*(6+6+2+2)+1 + 2+2 } + 1 + 5+2 ] + 6 >
 ;
-_685        JSR _RTS            ; ^1
-            DEX
-            BNE _685            ;   <1
-            DEY
-            BNE _685            ;   <1
-            DEC TMP0
-            BNE _682            ;   <0
-_692        RTS                 ; ^2
+_685        JSR _RTS            ; ^1    (6)
+            DEX                 ;       (2)
+            BNE _685            ;   <1  (2/3)
+            DEY                 ;       (2)
+            BNE _685            ;   <1  (2/3)
+            DEC TMP0            ;       (5)
+            BNE _682            ;   <0  (2/3)
+_692        RTS                 ; ^2    (6)
 ;-----------
 ;
 ; DRIVE OFF
