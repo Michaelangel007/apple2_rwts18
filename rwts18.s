@@ -777,7 +777,7 @@ WHOOP?   BPL <0
 ;
 ; Same as READ
 ;
-CMWRITSQ DX #1
+CMWRITSQ LDX #1
          HEX 2C
 CMWRITGP LDX #18
          JSR CMADINFO
