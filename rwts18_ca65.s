@@ -606,7 +606,7 @@ BUF3MOD     LDX $FF00,Y         ; Self-modified @ L#485
 ;
 PREP        STA PREPSLOT
             ORA #$8C            ; $C08C,X = $C0EC = Q6L = DRIVE_LATCH_R
-            STA GETNIBBL+1      ; Self-modifies L#]
+            STA GETNIBBL+1      ; Self-modifies L#282
             STA Q6LMOD0+1       ; Self-modifies L#151
             STA Q6LMOD1+1       ; Self-modifies L#409
             STA Q6LMOD2+1       ; Self-modifies L#419
