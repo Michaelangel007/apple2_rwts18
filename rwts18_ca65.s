@@ -836,7 +836,7 @@ _727        JSR GETBYTE         ; ^1
 ; <18 buf adr's>
 ;
 CMREADSQ    LDX #1
-            .byte $2C           ; BIT $abs == skip next instruction LDX #18
+            HEX "2C"            ; BIT $abs == skip next instruction LDX #18
 CMREADGP    LDX #18
             JSR CMADINFO        ; v L#799
 ;
@@ -878,7 +878,7 @@ _770        SEC                 ; ^2
 ; Same as READ
 ;
 CMWRITSQ    LDX #1
-            .byte $2C
+            HEX "2C"            ; BIT $abs == skip next instruction LDX #18
 CMWRITGP    LDX #18
             JSR CMADINFO        ; v L#799
             JSR PRENIBL         ; ^ L#478
