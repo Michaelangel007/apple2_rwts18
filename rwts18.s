@@ -649,7 +649,7 @@ SWAPZPAG LDX #15
 ^0       LDA DAT,X
          LDY ZPAGSAVE,X
          STA ZPAGSAVE,X
-         STA DAT,X
+         STY DAT,X
          DEX
          BPL <0
          RTS

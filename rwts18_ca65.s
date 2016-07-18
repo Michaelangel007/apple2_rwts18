@@ -749,7 +749,7 @@ SWAPZPAG    LDX #15             ;        DAT[$0..$F] <--> ZPAGSAVE[$0..$0F]
 _649        LDA DAT,X           ; ^0
             LDY ZPAGSAVE,X
             STA ZPAGSAVE,X
-            STA DAT,X
+            STY DAT,X
             DEX
             BPL _649            ;   <0
             RTS
