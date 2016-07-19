@@ -654,14 +654,14 @@ SWAPZPAG LDX #15
          BPL :0
          RTS
 
-CMDTABLE ADR CMDRIVON
-         ADR CMDRIVOF
-         ADR CMSEEK
-         ADR CMREADSQ
-         ADR CMREADGP
-         ADR CMWRITSQ
-         ADR CMWRITGP
-         ADR CMIDMOD
+CMDTABLE DW CMDRIVON
+         DW CMDRIVOF
+         DW CMSEEK
+         DW CMREADSQ
+         DW CMREADGP
+         DW CMWRITSQ
+         DW CMWRITGP
+         DW CMIDMOD
 ;-----------
 ;
 ; DRIVE ON
