@@ -1,0 +1,966 @@
+ca65 V2.15 - Git 8e297aa
+Main file   : ./rwts18_ca65.s
+Current file: ./rwts18_ca65.s
+
+000000r 1               ; Roland Gustafsson's RWTS18 Source
+000000r 1               ; Apple ][ Time Capsule
+000000r 1               ; https://www.youtube.com/watch?v=ScFrXoD99hw
+000000r 1               ; Transcribed by Michael Pohoreski, AppleWin "Debugger" Developer
+000000r 1               ; Assembler: ca65
+000000r 1               .feature labels_without_colons
+000000r 1               .feature leading_dot_in_identifiers
+000000r 1               .P02    ; normal 6502
+000000r 1               ; Utility macros because ca65 is crap out-of-the-box for Apple 2 assembly
+000000r 1               .macro ADR val
+000000r 1                   .addr val
+000000r 1               .endmacro
+000000r 1               ; Force APPLE 'text' to have high bit on; Will display as NORMAL characters
+000000r 1               .macro ASC text
+000000r 1                   .repeat .strlen(text), I
+000000r 1                       .byte   .strat(text, I) | $80
+000000r 1                   .endrep
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro BYT b1,b2,b3,b4
+000000r 1                       .byte b1
+000000r 1               
+000000r 1                   .ifnblank b2
+000000r 1                       .byte b2
+000000r 1                   .endif
+000000r 1                   .ifnblank b3
+000000r 1                       .byte b3
+000000r 1                   .endif
+000000r 1                   .ifnblank b4
+000000r 1                       .byte b4
+000000r 1                   .endif
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; Usage: NIBS2BYTE "A","A"
+000000r 1               .macro NIBS2BYTE c1, c2
+000000r 1                   .local val
+000000r 1                   .local hi, lo, val
+000000r 1               
+000000r 1                   .if ((c1 >= '0') && (c1 <= '9'))
+000000r 1                       hi = c1 - '0'
+000000r 1                   .else
+000000r 1                       .if ((c1 >= 'A') && (c1 <= 'F'))
+000000r 1                           hi = c1 - 'A' + 10
+000000r 1                       .else
+000000r 1                           .if ((c1 >= 'a') && (c1 <= 'f'))
+000000r 1                               hi = c1 - 'a' + 10
+000000r 1                           .endif
+000000r 1                       .endif
+000000r 1                   .endif
+000000r 1                   .if ((c2 >= '0') && (c2 <= '9'))
+000000r 1                       lo = c2 - '0'
+000000r 1                   .else
+000000r 1                       .if ((c2 >= 'A') && (c2 <= 'F'))
+000000r 1                           lo = c2 - 'A' + 10
+000000r 1                       .else
+000000r 1                           .if ((c2 >= 'a') && (c2 <= 'f'))
+000000r 1                               lo = c2 - 'a' + 10
+000000r 1                           .endif
+000000r 1                       .endif
+000000r 1                   .endif
+000000r 1               
+000000r 1                   val = hi*16 + lo
+000000r 1                   .byte val
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; Convert a text string to bytes. Example: HEX "A900"
+000000r 1               .macro HEX text
+000000r 1                   .local c1, c2, len
+000000r 1                   len .set .strlen(text)
+000000r 1               
+000000r 1                   .if ((len & 1) <> 0)
+000000r 1                       .error "HEX bytes must be even length -- one nibble too short"
+000000r 1                       .out .sprintf( "Length: %d", n )
+000000r 1                       .out .sprintf( "String: %s", text )
+000000r 1                   .else
+000000r 1                       .repeat len/2, I
+000000r 1                           c1  .set .strat( text, I*2+0 )
+000000r 1                           c2  .set .strat( text, I*2+1 )
+000000r 1                        NIBS2BYTE c1, c2
+000000r 1                       .endrep
+000000r 1                   .endif
+000000r 1               .endmacro
+000000r 1               ; ???
+000000r 1               .macro NOG
+000000r 1               .endmacro
+000000r 1               ; ???
+000000r 1               .macro NLS
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro TTL title
+000000r 1                   .out title
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro USR filename, origin
+000000r 1               .endmacro
+000000r 1                           __MAIN = $D000
+000000r 1               ; DOS3.3 retarded design -- stores file's meta as first 4 bytes in binary file
+000000r 1               ; Remove these 2 if running under ProDOS
+000000r 1  00 D0                    .word __MAIN         ; 2 byte BLOAD address
+000002r 1  AD 04                    .word __END - __MAIN ; 2 byte BLOAD size
+000004r 1                           NLS
+000004r 1                           TTL "S:RW18.D000"
+000004r 1                           NOG
+000004r 1               ORG         = $D000
+000004r 1               ;---------------
+000004r 1               ;
+000004r 1               ; 07/20/05
+000004r 1               ;
+000004r 1               ; 18 sector read/write routine
+000004r 1               ;
+000004r 1               ;        Copyright 1985
+000004r 1               ;     by Roland Gustafsson
+000004r 1               ;
+000004r 1               ;---------------
+000004r 1               SN1         = $D5
+000004r 1               SN2         = $9D
+000004r 1               SN3         = $AA
+000004r 1               SN4         = $D4
+000004r 1               SNX         = $FF
+000004r 1               ;
+000004r 1               BRBUNDID    = $A4               ; Br0derbund ID
+000004r 1               ;---------------
+000004r 1               ;
+000004r 1               ; Permanent vars
+000004r 1               ;
+000004r 1               SLOT        = $FD
+000004r 1               TRACK       = $FE
+000004r 1               LASTRACK    = $FF
+000004r 1               SLOTABS     = SLOT
+000004r 1               ;---
+000004r 1               ;
+000004r 1               ; Temporary vars
+000004r 1               ;
+000004r 1               DAT         = $E0
+000004r 1               ;
+000004r 1               BUF1        = DAT
+000004r 1               BUF2        = DAT+2
+000004r 1               BUF3        = DAT+4
+000004r 1               LEFT        = DAT+6
+000004r 1               TRACKGOT    = DAT+8
+000004r 1               SECTOR      = DAT+9
+000004r 1               RETRIES     = DAT+10
+000004r 1               TEMP        = DAT+11
+000004r 1               CHECKSUM    = DAT+12
+000004r 1               TEMP1       = DAT+13
+000004r 1               TEMP2       = DAT+14
+000004r 1               COMMAND     = DAT+15
+000004r 1               ;
+000004r 1               ; VERY temporary vars used by SEEK
+000004r 1               ;
+000004r 1               TMP0        = BUF1
+000004r 1               TMP1        = BUF1+1
+000004r 1               TMP2        = BUF2
+000004r 1               TMP3        = BUF2+1
+000004r 1               ;------------
+000004r 1               ;
+000004r 1               GARPAGE     = ORG+$500          ; $D500
+000004r 1               LEFTOVER    = ORG+$600          ; $D600
+000004r 1               BITS1       = ORG+$C00          ; $DC00
+000004r 1               BITS2       = ORG+$D00          ; $DD00
+000004r 1               BITS3       = ORG+$E00          ; $DE00
+000004r 1               BUFTABLE    = ORG+$F00          ; $DF00
+000004r 1               ;
+000004r 1               ; DENIBBLE  uses $96..$FF
+000004r 1               ;
+000004r 1               DENIBBLE    = BUFTABLE          ; $DF00
+000004r 1               SECTDONE    = BUFTABLE+18       ; $DF12
+000004r 1               ZPAGSAVE    = SECTDONE+6        ; $DF18
+000004r 1               ;-----------
+000004r 1                           .org ORG
+00D000  1               ;           OBJ $0800
+00D000  1               ;-----------
+00D000  1  4C 7D D3                 JMP RW18            ; v L#618
+00D003  1               ;-----------
+00D003  1               ;
+00D003  1               ; Valid disk nibbles
+00D003  1               ;
+00D003  1  96 97 9A 9B  NIBBLES     HEX "96979A9B9D9E9FA6"
+00D007  1  9D 9E 9F A6  
+00D00B  1  A7 AB AC AD              HEX "A7ABACADAEAFB2B3"
+00D00F  1  AE AF B2 B3  
+00D013  1  B4 B5 B6 B7              HEX "B4B5B6B7B9BABBBC"
+00D017  1  B9 BA BB BC  
+00D01B  1  BD BE BF CB              HEX "BDBEBFCBCDCECFD3"
+00D01F  1  CD CE CF D3  
+00D023  1  D6 D7 D9 DA              HEX "D6D7D9DADBDCDDDE"
+00D027  1  DB DC DD DE  
+00D02B  1  DF E5 E6 E7              HEX "DFE5E6E7E9EAEBEC"
+00D02F  1  E9 EA EB EC  
+00D033  1  ED EE EF F2              HEX "EDEEEFF2F3F4F5F6"
+00D037  1  F3 F4 F5 F6  
+00D03B  1  F7 F9 FA FB              HEX "F7F9FAFBFCFDFEFF"
+00D03F  1  FC FD FE FF  
+00D043  1               ;-----------
+00D043  1               ;
+00D043  1               ; The first part make sthe disk
+00D043  1               ; look like a BSW master disk.  ; Br0derbund SoftWare??
+00D043  1               ;
+00D043  1  A5 96 BF FF  SOFTSYNC    HEX "A596BFFFFEAABBAAAAFFEF9A"
+00D047  1  FE AA BB AA  
+00D04B  1  AA FF EF 9A  
+00D04F  1               ;
+00D04F  1  D5 9D        NOTFSEC     BYT SN1,SN2
+00D051  1  96           TRACKMOD    HEX "96"
+00D052  1  96           SECMOD      HEX "96"
+00D053  1  96           CHECKMOD    HEX "96"
+00D054  1  AA FF FF 00              BYT SN3,SNX,SNX,0
+00D058  1               ;-----------
+00D058  1               ;
+00D058  1               ; Write routine, timing critical code!
+00D058  1               ;
+00D058  1               ; Write out #$FF sync bytes at
+00D058  1               ; 40 microseconds, # given in Y.
+00D058  1               ;
+00D058  1  A9 FF        WRITETC     LDA #$FF            ; Write Timed Cycles?
+00D05A  1  9D 8F C0                 STA $C08F,X     ; 5     Q7H = DRIVE_MODE_W
+00D05D  1  1D 8C C0                 ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+00D060  1  26 EB                    ROL TEMP        ; 5
+00D062  1  EA           _109        NOP             ; 2     ^0
+00D063  1  20 AC D1                 JSR _RTS        ;12
+00D066  1  20 AC D1                 JSR _RTS        ;12     = 40
+00D069  1  9D 8C C0                 STA $C08C,X     ; 5     Q6L = DRIVE_LATCH_R
+00D06C  1               ;                           ;
+00D06C  1  1D 8C C0                 ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+00D06F  1  88                       DEY             ; 2
+00D070  1  D0 F0                    BNE _109        ; 3/2     <0
+00D072  1               ;-----------                ;
+00D072  1  A0 00        SYNCMOD     LDY #00         ; 2
+00D074  1  B9 43 D0     _119        LDA SOFTSYNC,Y  ; 4     ^1
+00D077  1  F0 10                    BEQ _132        ; 2/3     >2
+00D079  1  C8                       INY             ; 2
+00D07A  1  EA                       NOP             ; 2
+00D07B  1  EA                       NOP             ; 2
+00D07C  1  EA                       NOP             ; 2
+00D07D  1  A6 FD                    LDX SLOT        ; 3
+00D07F  1  9D 8D C0                 STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
+00D082  1               ;                           ;
+00D082  1  1D 8C C0                 ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+00D085  1  A6 FD                    LDX SLOT        ; 3
+00D087  1  D0 EB                    BNE _119        ; 3       <1
+00D089  1               ;-----------
+00D089  1  EA           _132        NOP             ; 2     ^2
+00D08A  1  EA                       NOP             ; 2
+00D08B  1  EA                       NOP             ; 2
+00D08C  1  EA                       NOP             ; 2
+00D08D  1  A9 A4        IDMOD0      LDA #BRBUNDID   ; 2 Self-modified @ L#792
+00D08F  1  9D 8D C0                 STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
+00D092  1               ;                           ;
+00D092  1  1D 8C C0                 ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+00D095  1  A0 00                    LDY #00         ; 2
+00D097  1  84 EC                    STY CHECKSUM    ; 3
+00D099  1               ;                           ;
+00D099  1  B1 E6        _143        LDA (LEFT),Y    ; 5     ^0
+00D09B  1  AA                       TAX             ; 2
+00D09C  1  45 EC                    EOR CHECKSUM    ; 3
+00D09E  1  85 EC                    STA CHECKSUM    ; 3
+00D0A0  1  BD 03 D0                 LDA NIBBLES,X   ; 4
+00D0A3  1  EA                       NOP             ; 2
+00D0A4  1  8D ED C0     Q6HMOD0     STA $C0ED       ; 4     Q6H = DRIVE_LATCH_W Self-modifed @ L#517
+00D0A7  1               ;                           ;
+00D0A7  1  0D EC C0     Q6LMOD0     ORA $C0EC       ; 4     Q6L = DRIVE_LATCH_R Self-modifed @ L#510
+00D0AA  1  B1 E0                    LDA (BUF1),Y    ; 4
+00D0AC  1  29 3F                    AND #$3F        ; 2     Disk nibbles 6&2 = 64
+00D0AE  1  AA                       TAX             ; 2
+00D0AF  1  45 EC                    EOR CHECKSUM    ; 3
+00D0B1  1  85 EC                    STA CHECKSUM    ; 3
+00D0B3  1  BD 03 D0                 LDA NIBBLES,X   ; 4
+00D0B6  1  A6 FD                    LDX SLOTABS     ; 4
+00D0B8  1  9D 8D C0                 STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
+00D0BB  1               ;                           ;
+00D0BB  1  1D 8C C0                 ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+00D0BE  1  B1 E2                    LDA (BUF2),Y    ; 5
+00D0C0  1  29 3F                    AND #$3F        ; 2
+00D0C2  1  AA                       TAX             ; 2
+00D0C3  1  45 EC                    EOR CHECKSUM    ; 3
+00D0C5  1  85 EC                    STA CHECKSUM    ; 3
+00D0C7  1  BD 03 D0                 LDA NIBBLES,X   ; 4
+00D0CA  1  A6 FD                    LDX SLOTABS     ; 4
+00D0CC  1  9D 8D C0                 STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
+00D0CF  1               ;                           ;
+00D0CF  1  1D 8C C0                 ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+00D0D2  1  B1 E4                    LDA (BUF3),Y    ; 5
+00D0D4  1  29 3F                    AND #$3F        ; 2
+00D0D6  1  AA                       TAX             ; 2
+00D0D7  1  45 EC                    EOR CHECKSUM    ; 3
+00D0D9  1  85 EC                    STA CHECKSUM    ; 3
+00D0DB  1  BD 03 D0                 LDA NIBBLES,X   ; 4
+00D0DE  1  A6 FD                    LDX SLOTABS     ; 4
+00D0E0  1  9D 8D C0                 STA $C08D,X     ; 5     Q6H = DRIVE_LATCH_W
+00D0E3  1               ;                           ;
+00D0E3  1  1D 8C C0                 ORA $C08C,X     ; 4     Q6L = DRIVE_LATCH_R
+00D0E6  1  C8                       INY             ; 2
+00D0E7  1  D0 B0                    BNE _143        ; 3/2     <0
+00D0E9  1               ;                           ;
+00D0E9  1  A6 EC                    LDX CHECKSUM    ; 3
+00D0EB  1  BD 03 D0                 LDA NIBBLES,X   ; 4
+00D0EE  1  A6 FD                    LDX SLOT        ; 3
+00D0F0  1  20 07 D1                 JSR WRNIBBL2    ; 6   v L#203
+00D0F3  1  A9 D4                    LDA #SN4
+00D0F5  1  20 04 D1                 JSR WRNIBBLE        ; v L#200
+00D0F8  1  A9 FF                    LDA #SNX
+00D0FA  1  20 04 D1                 JSR WRNIBBLE        ; v L#200
+00D0FD  1               ;
+00D0FD  1  BD 8E C0                 LDA $C08E,X         ; Q7L = DRIVE_MODE_R
+00D100  1  BD 8C C0                 LDA $C08C,X         ; Q6L = DRIVE_LATCH_R
+00D103  1  60                       RTS
+00D104  1               ;
+00D104  1               ; Write a nibble
+00D104  1               ;
+00D104  1  EA           WRNIBBLE    NOP             ; 2 Cycles = 18
+00D105  1  EA                       NOP             ; 2
+00D106  1  18                       CLC             ; 2
+00D107  1  A6 FD        WRNIBBL2    LDX SLOT        ; 3 Cycles = 12
+00D109  1  9D 8D C0                 STA $C08D,X     ; 5 ; Q6H = DRIVE_LATCH_W
+00D10C  1               ;                           ;
+00D10C  1  1D 8C C0                 ORA $C08C,X     ; 4 ; Q6L = DRIVE_LATCH_R
+00D10F  1  60                       RTS
+00D110  1               ;-----------
+00D110  1               ;
+00D110  1               ; Write a track. Same parameters as
+00D110  1               ; the READ routine
+00D110  1               ; Call PRENIBL to create the $600 byte
+00D110  1               ; LEFTOVER table.
+00D110  1               ;
+00D110  1  20 53 D1     WRITE       JSR INITBUF
+00D113  1  A4 FE                    LDY TRACK
+00D115  1  B9 03 D0                 LDA NIBBLES,Y
+00D118  1  8D 51 D0                 STA TRACKMOD
+00D11B  1               ;
+00D11B  1               ; Compute track/sector checksum
+00D11B  1               ;
+00D11B  1  A5 E9        _222        LDA SECTOR          ; ^1
+00D11D  1  45 FE                    EOR TRACK
+00D11F  1  A8                       TAY
+00D120  1  B9 03 D0                 LDA NIBBLES,Y
+00D123  1  8D 53 D0                 STA CHECKMOD
+00D126  1               ;
+00D126  1               ; Point to buffers
+00D126  1               ;
+00D126  1  20 E3 D1                 JSR GETBUFS
+00D129  1  B9 03 D0                 LDA NIBBLES,Y
+00D12C  1  8D 52 D0                 STA SECMOD
+00D12F  1               ;
+00D12F  1  C0 05                    CPY #5
+00D131  1  F0 06                    BEQ _249            ;   >2
+00D133  1               ;
+00D133  1               ; If this is not the first sector,
+00D133  1               ; then don't write out BSW id bytes
+00D133  1               ; and only write out 4 self-syncs.
+00D133  1               ;
+00D133  1  A9 0C                    LDA #(NOTFSEC-SOFTSYNC)
+00D135  1  A0 04                    LDY #4
+00D137  1  D0 04                    BNE _252            ;   >3
+00D139  1               ;
+00D139  1               ; First sector, write out BSW id bytes
+00D139  1               ; and 200 self-sync bytes to ensure
+00D139  1               ; the the track is erased.
+00D139  1               ;
+00D139  1  A9 00        _249        LDA #0              ; ^2
+00D13B  1  A0 C8                    LDY #200
+00D13D  1               ;
+00D13D  1  8D 73 D0     _252        STA SYNCMOD+1       ; ^3
+00D140  1               ;
+00D140  1               ; Make disk controller happy
+00D140  1               ; by checking for write protect
+00D140  1               ;
+00D140  1  BD 8D C0                 LDA $C08D,X         ; Q6H = DRIVE_LATCH_W
+00D143  1  BD 8E C0                 LDA $C08E,X         ; Q7L = DRIVE_MODE_R
+00D146  1  38                       SEC
+00D147  1  30 09                    BMI _265            ;   >4
+00D149  1  20 58 D0                 JSR WRITETC
+00D14C  1  E6 E7                    INC LEFT+1
+00D14E  1  C6 E9                    DEC SECTOR
+00D150  1  10 C9                    BPL _222            ;   <1
+00D152  1  60           _265        RTS                 ; ^4
+00D153  1               ;-----------
+00D153  1               ;
+00D153  1               ; Init SECTOR, buffer pointers.
+00D153  1               ;
+00D153  1  A9 05        INITBUF     LDA #5
+00D155  1  85 E9                    STA SECTOR
+00D157  1  A0 00                    LDY #0
+00D159  1  84 E0                    STY BUF1
+00D15B  1  84 E2                    STY BUF2
+00D15D  1  84 E4                    STY BUF3
+00D15F  1  A9 D6                    LDA #>LEFTOVER      ; /LEFTOVER == high byte
+00D161  1  84 E6                    STY LEFT
+00D163  1  85 E7                    STA LEFT+1
+00D165  1  A6 FD                    LDX SLOT
+00D167  1  60                       RTS
+00D168  1               ;-----------
+00D168  1  AE EC C0     GETNIBBL    LDX $C0EC           ; Self-modified @ L#509
+00D16B  1  10 FB                    BPL *-3             ; not BPL GETNIBL ??
+00D16D  1  BD 00 DF                 LDA DENIBBLE,X
+00D170  1  60                       RTS
+00D171  1               ;
+00D171  1               ; Read an entire track, with
+00D171  1               ; buffer addresses given in an 18
+00D171  1               ; byte order, BUFTABLE
+00D171  1               ;
+00D171  1               ; Return branch conditions:
+00D171  1               ;
+00D171  1               ; BCS = read error
+00D171  1               ; BNE = wrong track, A = track found
+00D171  1               ; BEQ = OK, data read in
+00D171  1               ;
+00D171  1  20 53 D1     READ        JSR INITBUF
+00D174  1  A0 05                    LDY #5
+00D176  1  A9 30                    LDA #48
+00D178  1  85 EA                    STA RETRIES
+00D17A  1  99 12 DF     _301        STA SECTDONE,Y      ; ^0
+00D17D  1  88                       DEY
+00D17E  1  10 FA                    BPL _301            ;   <0
+00D180  1               ;
+00D180  1  C6 EA        READLOOP    DEC RETRIES
+00D182  1  F0 29                    BEQ READERR
+00D184  1  20 AF D1                 JSR READADDR
+00D187  1  B0 F7                    BCS READLOOP
+00D189  1               ;
+00D189  1               ; On the right track?
+00D189  1               ;
+00D189  1  A5 E8                    LDA TRACKGOT
+00D18B  1  C5 FE                    CMP TRACK
+00D18D  1  18                       CLC
+00D18E  1  D0 1C                    BNE _RTS            ; RTS
+00D190  1               ;
+00D190  1               ; Has this sector been read in yet?
+00D190  1               ;
+00D190  1  B9 12 DF                 LDA SECTDONE,Y
+00D193  1  F0 EB                    BEQ READLOOP
+00D195  1               ;
+00D195  1               ; Read it in!
+00D195  1               ;
+00D195  1  20 F5 D1                 JSR READDATA
+00D198  1  B0 E6                    BCS READLOOP
+00D19A  1  A9 00                    LDA #0
+00D19C  1  A4 E9                    LDY SECTOR
+00D19E  1  99 12 DF                 STA SECTDONE,Y
+00D1A1  1               ;
+00D1A1  1               ; Any more?
+00D1A1  1               ;
+00D1A1  1  A0 05                    LDY #5
+00D1A3  1  B9 12 DF     _333        LDA SECTDONE,Y      ; ^0
+00D1A6  1  D0 D8                    BNE READLOOP
+00D1A8  1  88                       DEY
+00D1A9  1  10 F8                    BPL _333            ;   <0
+00D1AB  1  C8                       INY
+00D1AC  1  60           _RTS        RTS                 ; RTS
+00D1AD  1               ;
+00D1AD  1  38           READERR     SEC
+00D1AE  1  60                       RTS
+00D1AF  1               ;-----------
+00D1AF  1               ;
+00D1AF  1               ; Read address marks
+00D1AF  1               ;
+00D1AF  1  A0 FA        READADDR    LDY #$FA
+00D1B1  1  84 EB                    STY TEMP
+00D1B3  1  C8           _348        INY                 ; ^0
+00D1B4  1  D0 04                    BNE _353            ;   >1
+00D1B6  1  E6 EB                    INC TEMP
+00D1B8  1  F0 F3                    BEQ READERR         ; ^ L#340
+00D1BA  1               ;
+00D1BA  1  20 68 D1     _353        JSR GETNIBBL        ; ^1
+00D1BD  1  E0 D5        _354        CPX #SN1            ; ^2
+00D1BF  1  D0 F2                    BNE _348            ;   <0
+00D1C1  1  20 68 D1                 JSR GETNIBBL
+00D1C4  1  E0 9D                    CPX #SN2
+00D1C6  1  D0 F5                    BNE _354            ;   <2
+00D1C8  1               ;
+00D1C8  1  20 68 D1                 JSR GETNIBBL
+00D1CB  1  85 E8                    STA TRACKGOT
+00D1CD  1  20 68 D1                 JSR GETNIBBL
+00D1D0  1  85 E9                    STA SECTOR
+00D1D2  1  20 68 D1                 JSR GETNIBBL
+00D1D5  1  45 E8                    EOR TRACKGOT
+00D1D7  1  45 E9                    EOR SECTOR
+00D1D9  1  D0 D8                    BNE _348            ;   <0
+00D1DB  1  20 68 D1                 JSR GETNIBBL
+00D1DE  1  E0 AA                    CPX #SN3
+00D1E0  1  D0 D1                    BNE _348            ;   <0
+00D1E2  1  18                       CLC
+00D1E3  1               ;
+00D1E3  1               ; Given sector, set buffer pointers
+00D1E3  1               ;
+00D1E3  1  A4 E9        GETBUFS     LDY SECTOR
+00D1E5  1  B9 00 DF                 LDA BUFTABLE,Y
+00D1E8  1  85 E1                    STA BUF1+1
+00D1EA  1  B9 06 DF                 LDA BUFTABLE+6,Y
+00D1ED  1  85 E3                    STA BUF2+1
+00D1EF  1  B9 0C DF                 LDA BUFTABLE+12,Y
+00D1F2  1  85 E5                    STA BUF3+1
+00D1F4  1  60                       RTS
+00D1F5  1               ;-----------
+00D1F5  1               ;
+00D1F5  1               ; Read sector.
+00D1F5  1               ;
+00D1F5  1               ; First find data mark, which is
+00D1F5  1               ; BRBUNID
+00D1F5  1               ;
+00D1F5  1  A0 04        READDATA    LDY #4
+00D1F7  1  88           _391        DEY                 ; ^0
+00D1F8  1  F0 B3                    BEQ READERR
+00D1FA  1  20 68 D1                 JSR GETNIBBL
+00D1FD  1  E0 A4        IDMOD1      CPX #BRBUNDID       ; Self-modified @ L#793
+00D1FF  1  D0 F6                    BNE _391            ;   <0
+00D201  1               ;
+00D201  1               ; Now read in data
+00D201  1               ;
+00D201  1               ; Initialize checksum to zero!
+00D201  1               ; See code further below to better  ; futhur -> futher
+00D201  1               ; understand what is happening here.
+00D201  1               ;
+00D201  1  A0 00                    LDY #0
+00D203  1  A5 ED                    LDA TEMP1
+00D205  1               ;
+00D205  1               ; Main read loop
+00D205  1               ;
+00D205  1               READDAT2:
+00D205  1  AE EC C0     Q6LMOD1     LDX $C0EC           ; Self-modified @ L#511
+00D208  1  10 FB                    BPL *-3
+00D20A  1  45 ED                    EOR TEMP1
+00D20C  1  5D 00 DF                 EOR DENIBBLE,X
+00D20F  1  85 EC                    STA CHECKSUM
+00D211  1  BD 00 DF                 LDA DENIBBLE,X
+00D214  1  0A                       ASL
+00D215  1  0A                       ASL
+00D216  1  85 EB                    STA TEMP
+00D218  1               ;
+00D218  1  AE EC C0     Q6LMOD2     LDX $C0EC           ; Self-modified @ L#512
+00D21B  1  10 FB                    BPL *-3
+00D21D  1  29 C0                    AND #$C0
+00D21F  1  1D 00 DF                 ORA DENIBBLE,X
+00D222  1  91 E0                    STA (BUF1),Y
+00D224  1  85 ED                    STA TEMP1
+00D226  1  A5 EB                    LDA TEMP
+00D228  1  0A                       ASL
+00D229  1  0A                       ASL
+00D22A  1               
+00D22A  1  AE EC C0     Q6LMOD3     LDX $C0EC           ; Self-modified @ L#513
+00D22D  1  10 FB                    BPL *-3
+00D22F  1  85 EB                    STA TEMP
+00D231  1  29 C0                    AND #$C0
+00D233  1  1D 00 DF                 ORA DENIBBLE,X
+00D236  1  91 E2                    STA (BUF2),Y
+00D238  1  85 EE                    STA TEMP2
+00D23A  1  A5 EB                    LDA TEMP
+00D23C  1  0A                       ASL
+00D23D  1               ;                               ; second ASL on L#441
+00D23D  1  AE EC C0     Q6LMOD4     LDX $C0EC           ; Self-modified @ L#514
+00D240  1  10 FB                    BPL *-3
+00D242  1  0A                       ASL
+00D243  1  1D 00 DF                 ORA DENIBBLE,X
+00D246  1  91 E4                    STA (BUF3),Y
+00D248  1  45 EE                    EOR TEMP2
+00D24A  1  45 EC                    EOR CHECKSUM
+00D24C  1  C8                       INY
+00D24D  1  D0 B6                    BNE READDAT2        ; ^ L#408
+00D24F  1               ;
+00D24F  1               ; Get checksum
+00D24F  1               ;
+00D24F  1  AE EC C0     Q6LMOD5     LDX $C0EC           ; Self-modified @ L#515
+00D252  1  10 FB                    BPL *-3             ; ^
+00D254  1  5D 00 DF                 EOR DENIBBLE,X
+00D257  1  45 ED                    EOR TEMP1
+00D259  1  29 3F                    AND #$3F
+00D25B  1  D0 09                    BNE _464            ;   >0
+00D25D  1               ;
+00D25D  1  20 68 D1                 JSR GETNIBBL
+00D260  1  E0 D4                    CPX #SN4
+00D262  1  D0 02                    BNE _464            ;   >0
+00D264  1  18                       CLC
+00D265  1  60                       RTS
+00D266  1               ;
+00D266  1  38           _464        SEC                 ; ^0 BadChecksum or NotFoundSN4
+00D267  1  60                       RTS
+00D268  1               ;-----------
+00D268  1               ;
+00D268  1               ; Prenibble data into LEFTOVER
+00D268  1               ; buffer.
+00D268  1               ;
+00D268  1               ; A:BUF1, B:BUF2, C:BUF3
+00D268  1               ;
+00D268  1               ; A7 A6 B7 B7 C7 C6 --> Leftovers
+00D268  1               ; A5 A4 A3 A2 A1 A0  \
+00D268  1               ; B5 B4 B3 B2 B1 B0   > Data
+00D268  1               ; C5 C4 C3 C2 C1 C0  /
+00D268  1               ;
+00D268  1  20 53 D1     PRENIBL     JSR INITBUF
+00D26B  1  20 E3 D1     _479        JSR GETBUFS         ; ^0
+00D26E  1  A5 E1                    LDA BUF1+1
+00D270  1  8D 81 D2                 STA BUF1MOD+2       ; Self-modifies L#488 LDX $??00,Y
+00D273  1  A5 E3                    LDA BUF2+1
+00D275  1  8D 87 D2                 STA BUF2MOD+2       ; Self-modifies L#490 LDX $??00,Y
+00D278  1  A5 E5                    LDA BUF3+1
+00D27A  1  8D 8D D2                 STA BUF3MOD+2       ; Self-modifies L#492 LDX $??00,Y
+00D27D  1               ;
+00D27D  1  A0 00                    LDY #0
+00D27F  1  BE 00 FF     BUF1MOD     LDX $FF00,Y         ; Self-modified @ L#481
+00D282  1  BD 00 DC                 LDA BITS1,X
+00D285  1  BE 00 FF     BUF2MOD     LDX $FF00,Y         ; Self-modified @ L#483
+00D288  1  1D 00 DD                 ORA BITS2,X
+00D28B  1  BE 00 FF     BUF3MOD     LDX $FF00,Y         ; Self-modified @ L#485
+00D28E  1  1D 00 DE                 ORA BITS3,X
+00D291  1  91 E6                    STA (LEFT),Y
+00D293  1  C8                       INY
+00D294  1  D0 E9                    BNE BUF1MOD
+00D296  1  E6 E7                    INC LEFT+1
+00D298  1  C6 E9                    DEC SECTOR
+00D29A  1  10 CF                    BPL _479            ;   <0
+00D29C  1  60                       RTS
+00D29D  1               ;-----------
+00D29D  1               ;
+00D29D  1               ; Prepare RW18 for use
+00D29D  1               ;
+00D29D  1               ; given A=slot*16
+00D29D  1               ;
+00D29D  1  8D 8B D3     PREP        STA PREPSLOT
+00D2A0  1  09 8C                    ORA #$8C            ; $C08C,X = $C0EC = Q6L = DRIVE_LATCH_R
+00D2A2  1  8D 69 D1                 STA GETNIBBL+1      ; Self-modifies L#282
+00D2A5  1  8D A8 D0                 STA Q6LMOD0+1       ; Self-modifies L#151
+00D2A8  1  8D 06 D2                 STA Q6LMOD1+1       ; Self-modifies L#409
+00D2AB  1  8D 19 D2                 STA Q6LMOD2+1       ; Self-modifies L#419
+00D2AE  1  8D 2B D2                 STA Q6LMOD3+1       ; Self-modifies L#429
+00D2B1  1  8D 3E D2                 STA Q6LMOD4+1       ; Self-modifies L#439
+00D2B4  1  8D 50 D2                 STA Q6LMOD5+1       ; Self-modifies L#451
+00D2B7  1  09 01                    ORA #$1             ; $C08D,X = $C0ED = Q6H = DRIVE_LATCH_W
+00D2B9  1  8D A5 D0                 STA Q6HMOD0+1       ; Self-modifies L#149
+00D2BC  1               ;
+00D2BC  1               ; Set up DENIBBL table, used by READ
+00D2BC  1               ;
+00D2BC  1  A0 3F                    LDY #$3F            ; 6&2 disk nibbles = 64
+00D2BE  1  BE 03 D0     _522        LDX NIBBLES,Y       ; ^0
+00D2C1  1  98                       TYA
+00D2C2  1  9D 00 DF                 STA DENIBBLE,X
+00D2C5  1  88                       DEY
+00D2C6  1  10 F6                    BPL _522            ;   <0
+00D2C8  1               ;
+00D2C8  1               ; Set up BITS tables for PRENIBL
+00D2C8  1               ;
+00D2C8  1  A0 00                    LDY #0
+00D2CA  1  98           _531        TYA                 ; ^1
+00D2CB  1  29 C0                    AND #$C0
+00D2CD  1  4A                       LSR
+00D2CE  1  4A                       LSR
+00D2CF  1  99 00 DC                 STA BITS1,Y
+00D2D2  1  4A                       LSR
+00D2D3  1  4A                       LSR
+00D2D4  1  99 00 DD                 STA BITS2,Y
+00D2D7  1  4A                       LSR
+00D2D8  1  4A                       LSR
+00D2D9  1  99 00 DE                 STA BITS3,Y
+00D2DC  1  C8                       INY
+00D2DD  1  D0 EB                    BNE _531            ;   <1
+00D2DF  1  60                       RTS
+00D2E0  1               ;-----------
+00D2E0  1               ;
+00D2E0  1               ; R/W head SEEK routine
+00D2E0  1               ;
+00D2E0  1               ; A:track
+00D2E0  1               ;
+00D2E0  1  0A           SEEK        ASL                 ; Apple 2 Disk ][ = 2 phases/track
+00D2E1  1  85 E2                    STA TMP2
+00D2E3  1  C5 FF                    CMP LASTRACK
+00D2E5  1  F0 4D                    BEQ SEEKDONE        ; v L#596
+00D2E7  1  A9 00                    LDA #0
+00D2E9  1  85 E0                    STA TMP0
+00D2EB  1               ;
+00D2EB  1  A5 FF        SEEKLOOP    LDA LASTRACK
+00D2ED  1  85 E1                    STA TMP1
+00D2EF  1  38                       SEC
+00D2F0  1  E5 E2                    SBC TMP2
+00D2F2  1  F0 31                    BEQ SEEKTOG2
+00D2F4  1  B0 06                    BCS _568            ;   >0
+00D2F6  1  49 FF                    EOR #$FF            ; x-y = x + (y^FF+1) 2's compliment subtraction
+00D2F8  1  E6 FF                    INC LASTRACK
+00D2FA  1  90 04                    BCC _570            ;   >1
+00D2FC  1               ;
+00D2FC  1  69 FE        _568        ADC #$FE            ; ^0
+00D2FE  1  C6 FF                    DEC LASTRACK
+00D300  1  C5 E0        _570        CMP TMP0            ; ^1
+00D302  1  90 02                    BCC _573            ;   >2
+00D304  1  A5 E0                    LDA TMP0
+00D306  1  C9 0C        _573        CMP #$0C            ; ^2
+00D308  1  B0 01                    BCS _575            ;   >3
+00D30A  1  A8                       TAY
+00D30B  1  38           _575        SEC                 ; ^3
+00D30C  1  20 29 D3                 JSR SEEKTOG1
+00D30F  1  B9 42 D3                 LDA SEEKTBL1,Y
+00D312  1  20 37 D3                 JSR SEEKDELY
+00D315  1  A5 E1                    LDA TMP1
+00D317  1  18                       CLC
+00D318  1  20 2B D3                 JSR SEEKTOGL
+00D31B  1  B9 4E D3                 LDA SEEKTBL2,Y
+00D31E  1  20 37 D3                 JSR SEEKDELY
+00D321  1  E6 E0                    INC TMP0
+00D323  1  D0 C6                    BNE SEEKLOOP
+00D325  1  20 37 D3     SEEKTOG2    JSR SEEKDELY
+00D328  1  18                       CLC
+00D329  1  A5 FF        SEEKTOG1    LDA LASTRACK
+00D32B  1               ;
+00D32B  1  29 03        SEEKTOGL    AND #$03
+00D32D  1  2A                       ROL
+00D32E  1  05 FD                    ORA SLOT
+00D330  1  AA                       TAX
+00D331  1  BD 80 C0                 LDA $C080,X
+00D334  1  A6 FD        SEEKDONE    LDX SLOT
+00D336  1  60                       RTS
+00D337  1               ;
+00D337  1  A2 13        SEEKDELY    LDX #$13
+00D339  1  CA           _600        DEX                 ; ^0
+00D33A  1  D0 FD                    BNE _600            ;   <0
+00D33C  1  38                       SEC
+00D33D  1  E9 01                    SBC #1
+00D33F  1  D0 F6                    BNE SEEKDELY
+00D341  1  60                       RTS
+00D342  1               ;
+00D342  1               ; Acceleration/deceleration tables
+00D342  1               ;                               ; Lifted from Woz's code -- DOS 3.2/3.3
+00D342  1  01 30 28 24  SEEKTBL1    HEX "01302824201E1D1C1C1C1C1C"
+00D346  1  20 1E 1D 1C  
+00D34A  1  1C 1C 1C 1C  
+00D34E  1  70 2C 26 22  SEEKTBL2    HEX "702C26221F1E1D1C1C1C1C1C"
+00D352  1  1F 1E 1D 1C  
+00D356  1  1C 1C 1C 1C  
+00D35A  1               ;
+00D35A  1  C3 CF D0 D9              ASC "COPYRIGHT 1985 "       ; 15 Wasted bytes
+00D35E  1  D2 C9 C7 C8  
+00D362  1  D4 A0 B1 B9  
+00D369  1  C2 D9 A0 D2              ASC "BY ROLAND GUSTAFSSON"  ; 20 Wasted bytes
+00D36D  1  CF CC C1 CE  
+00D371  1  C4 A0 C7 D5  
+00D37D  1               ;-----------
+00D37D  1               ;
+00D37D  1               ; Entry point into RW18
+00D37D  1               ;
+00D37D  1  68           RW18        PLA
+00D37E  1  8D AA D4                 STA GOTBYTE+1
+00D381  1  68                       PLA
+00D382  1  8D AB D4                 STA GOTBYTE+2
+00D385  1               ;
+00D385  1  20 B1 D3                 JSR SWAPZPAG
+00D388  1               ;
+00D388  1  A5 FD                    LDA SLOT
+00D38A  1  C9 00                    CMP #00
+00D38C  1               PREPSLOT    =   *-1
+00D38C  1  F0 03                    BEQ _631            ;   >0
+00D38E  1  20 9D D2                 JSR PREP
+00D391  1               ;
+00D391  1  20 A1 D4     _631        JSR GETBYTE         ; ^0
+00D394  1  85 EF                    STA COMMAND
+00D396  1  29 0F                    AND #$0F
+00D398  1  0A                       ASL
+00D399  1  AA                       TAX
+00D39A  1               ;
+00D39A  1  BD C1 D3                 LDA CMDTABLE,X
+00D39D  1  8D A7 D3                 STA _641+1          ;   >1+1 Self-modifies L#641]
+00D3A0  1  BD C2 D3                 LDA CMDTABLE+1,X
+00D3A3  1  8D A8 D3                 STA _641+2          ;   >1+2 Self-modifies L#641]
+00D3A6  1  20 FF FF     _641        JSR $FFFF           ; ^1     Self-modified @ L#638-640
+00D3A9  1               ;
+00D3A9  1  AD AB D4                 LDA GOTBYTE+2
+00D3AC  1  48                       PHA
+00D3AD  1  AD AA D4                 LDA GOTBYTE+1
+00D3B0  1  48                       PHA
+00D3B1  1               ;
+00D3B1  1  A2 0F        SWAPZPAG    LDX #15             ;        DAT[$0..$F] <--> ZPAGSAVE[$0..$0F]
+00D3B3  1  B5 E0        _649        LDA DAT,X           ; ^0
+00D3B5  1  BC 18 DF                 LDY ZPAGSAVE,X
+00D3B8  1  9D 18 DF                 STA ZPAGSAVE,X
+00D3BB  1  94 E0                    STY DAT,X
+00D3BD  1  CA                       DEX
+00D3BE  1  10 F3                    BPL _649            ;   <0
+00D3C0  1  60                       RTS
+00D3C1  1               
+00D3C1  1  D1 D3        CMDTABLE    ADR CMDRIVON      ; Drive On       L#670
+00D3C3  1  F8 D3                    ADR CMDRIVOF      ; Drive Off      L#697
+00D3C5  1  FE D3                    ADR CMSEEK        ; Seek           L#706
+00D3C7  1  22 D4                    ADR CMREADSQ      ; Read Sequnce   L#735
+00D3C9  1  25 D4                    ADR CMREADGP      ; Read Group     L#738
+00D3CB  1  57 D4                    ADR CMWRITSQ      ; Write Sequence L#780
+00D3CD  1  5A D4                    ADR CMWRITGP      ; Write Group    L#782
+00D3CF  1  68 D4                    ADR CMIDMOD       ; Change Id Mod  L#791
+00D3D1  1               ;-----------
+00D3D1  1               ;
+00D3D1  1               ; DRIVE ON
+00D3D1  1               ; <drive#>,<delay, in 1/10ths [of] sec[onds]>
+00D3D1  1               ; NOTE: Drive = 1 or 2
+00D3D1  1  A6 FD        CMDRIVON    LDX SLOT
+00D3D3  1  20 A1 D4                 JSR GETBYTE         ; A=1 (Drive 1) or 2 (Drive 2)
+00D3D6  1  05 FD                    ORA SLOT
+00D3D8  1  A8                       TAY                 ; Roland originally had $C089 but $C08A-1 is clearer
+00D3D9  1  B9 89 C0                 LDA $C08A-1,Y       ; DRIVE_MOTOR_ON -> DRIVE_SELECT
+00D3DC  1  BD 89 C0                 LDA $C089,X         ; DRIVE_MOTOR_ON
+00D3DF  1               ;
+00D3DF  1               ; Delay 1/10ths of seconds
+00D3DF  1               ;
+00D3DF  1  20 A1 D4                 JSR GETBYTE
+00D3E2  1  F0 13                    BEQ _692            ;   >2
+00D3E4  1  85 E0                    STA TMP0            ;       $00E0
+00D3E6  1  A0 17        _682        LDY #$17            ; ^0    if delay=1
+00D3E8  1  A2 00                    LDX #0              ;       delay * < [ 23 * { 256*(6+6+2+2)+1 + 2+2 } + 1 + 5+2 ] + 6 >
+00D3EA  1               ;
+00D3EA  1  20 AC D1     _685        JSR _RTS            ; ^1    (6)
+00D3ED  1  CA                       DEX                 ;       (2)
+00D3EE  1  D0 FA                    BNE _685            ;   <1  (2/3)
+00D3F0  1  88                       DEY                 ;       (2)
+00D3F1  1  D0 F7                    BNE _685            ;   <1  (2/3)
+00D3F3  1  C6 E0                    DEC TMP0            ;       (5)
+00D3F5  1  D0 EF                    BNE _682            ;   <0  (2/3)
+00D3F7  1  60           _692        RTS                 ; ^2    (6)
+00D3F8  1               ;-----------
+00D3F8  1               ;
+00D3F8  1               ; DRIVE OFF
+00D3F8  1               ;
+00D3F8  1  A6 FD        CMDRIVOF    LDX SLOT
+00D3FA  1  BD 88 C0                 LDA $C088,X         ; DRIVE_MOTOR_OFF
+00D3FD  1  60                       RTS
+00D3FE  1               ;-----------
+00D3FE  1               ;
+00D3FE  1               ; SEEK
+00D3FE  1               ; <check disk for LASTRACK?>,
+00D3FE  1               ; <track>
+00D3FE  1               ;
+00D3FE  1  20 A1 D4     CMSEEK      JSR GETBYTE
+00D401  1  F0 17                    BEQ _727            ;   >1
+00D403  1               ;
+00D403  1               ; Force "Track error"
+00D403  1               ;
+00D403  1  A9 FF                    LDA #255
+00D405  1  85 FE                    STA TRACK
+00D407  1  20 71 D1                 JSR READ
+00D40A  1  90 0B                    BCC _724            ;   >0
+00D40C  1               ;
+00D40C  1               ; If CLC, then A = current track,
+00D40C  1               ;         else recalibrate
+00D40C  1               ;
+00D40C  1  A9 A0                    LDA #$A0
+00D40E  1  85 FF                    STA LASTRACK
+00D410  1  A9 00                    LDA #0
+00D412  1  20 E0 D2                 JSR SEEK
+00D415  1  A9 00                    LDA #0
+00D417  1  0A           _724        ASL                 ; ^0
+00D418  1  85 FF                    STA LASTRACK
+00D41A  1               ;
+00D41A  1  20 A1 D4     _727        JSR GETBYTE         ; ^1
+00D41D  1  85 FE                    STA TRACK
+00D41F  1  4C E0 D2                 JMP SEEK            ; ^ L#551
+00D422  1               ;-----------
+00D422  1               ;
+00D422  1               ; READSEQU
+00D422  1               ;
+00D422  1               
+00D422  1               ; READGROP
+00D422  1               ; <18 buf adr's>
+00D422  1               ;
+00D422  1  A2 01        CMREADSQ    LDX #1
+00D424  1  2C                       HEX "2C"            ; BIT $abs == skip next instruction LDX #18
+00D425  1  A2 12        CMREADGP    LDX #18
+00D427  1  20 72 D4                 JSR CMADINFO        ; v L#799
+00D42A  1               ;
+00D42A  1  20 71 D1     CMREAD2     JSR READ
+00D42D  1  B0 0D                    BCS INCTRAK         ; v L#754 = INCTRAK?
+00D42F  1  F0 0B                    BEQ INCTRAK
+00D431  1  0A                       ASL
+00D432  1  85 FF                    STA LASTRACK
+00D434  1  A5 FE                    LDA TRACK
+00D436  1  20 E0 D2                 JSR SEEK            ; ^ L#551
+00D439  1  4C 2A D4                 JMP CMREAD2         ; ^ L#743
+00D43C  1               ;
+00D43C  1               ; READ/WRITE exit.
+00D43C  1               ;
+00D43C  1  24 EF        INCTRAK     BIT COMMAND
+00D43E  1  B0 05                    BCS WHOOP           ; v L#766 = WHOOP?
+00D440  1               ;
+00D440  1               ; If bit 6 set, then INC TRACK
+00D440  1               ;
+00D440  1  50 02                    BVC _761            ;   >0
+00D442  1  E6 FE                    INC TRACK
+00D444  1  60           _761        RTS                 ; ^0
+00D445  1               ;
+00D445  1               ; If bit 7 set then whoop speaker
+00D445  1               ; WARNING: use only with READ
+00D445  1               ;
+00D445  1  10 FD        WHOOP       BPL _761            ;   <0
+00D447  1  A0 00                    LDY #0
+00D449  1  98           _768        TYA                 ; ^1
+00D44A  1  2C 30 C0                 BIT $C030
+00D44D  1  38           _770        SEC                 ; ^2
+00D44E  1  E9 01                    SBC #1
+00D450  1  D0 FB                    BNE _770            ;   <2
+00D452  1  88                       DEY
+00D453  1  D0 F4                    BNE _768            ;   <1
+00D455  1  F0 D3                    BEQ CMREAD2         ; ^ L#743
+00D457  1               ;-----------
+00D457  1               ;
+00D457  1               ; Same as READ
+00D457  1               ;
+00D457  1  A2 01        CMWRITSQ    LDX #1
+00D459  1  2C                       HEX "2C"            ; BIT $abs == skip next instruction LDX #18
+00D45A  1  A2 12        CMWRITGP    LDX #18
+00D45C  1  20 72 D4                 JSR CMADINFO        ; v L#799
+00D45F  1  20 68 D2                 JSR PRENIBL         ; ^ L#478
+00D462  1  20 10 D1                 JSR WRITE           ; ^ L#215
+00D465  1  20 3C D4                 JSR INCTRAK         ; ^ L#754 == INCTRAK?
+00D468  1               ;-----------
+00D468  1               ;
+00D468  1               ; Chnage Br0derbund ID byte
+00D468  1               ;
+00D468  1  20 A1 D4     CMIDMOD     JSR GETBYTE
+00D46B  1  8D 8E D0                 STA IDMOD0+1        ; Self-modifies L#136
+00D46E  1  8D FE D1                 STA IDMOD1+1        ; Self-modifies L#394
+00D471  1  60                       RTS
+00D472  1               ;-----------
+00D472  1               ;
+00D472  1               ; Get buffer info.
+00D472  1               ;
+00D472  1  86 E0        CMADINFO    STX TMP0
+00D474  1  A2 00                    LDX #0
+00D476  1  20 A1 D4     _802        JSR GETBYTE         ; ^0
+00D479  1  9D 00 DF                 STA BUFTABLE,X
+00D47C  1  E8                       INX
+00D47D  1  E4 E0                    CPX TMP0
+00D47F  1  90 F5                    BCC _802            ; BLT <0  (BLT==BCC, BGE==BCS)
+00D481  1  A8                       TAY
+00D482  1               ;
+00D482  1               ; If sequence, then fill table
+00D482  1               ;
+00D482  1  C8           _810        INY                 ; ^1
+00D483  1  E0 12                    CPX #18
+00D485  1  F0 07                    BEQ _820            ;   >2
+00D487  1  98                       TYA
+00D488  1  9D 00 DF                 STA BUFTABLE,X
+00D48B  1  E8                       INX
+00D48C  1  D0 F4                    BNE _810            ;   <1
+00D48E  1               ;
+00D48E  1               ; Check for garbage pages
+00D48E  1               ;
+00D48E  1  CA           _820        DEX                 ; ^2
+00D48F  1  BD 00 DF     _821        LDA BUFTABLE,X      ; ^3
+00D492  1  D0 05                    BNE _825            ;   >4
+00D494  1  A9 D5                    LDA #>GARPAGE       ; /GARPAGE == high byte
+00D496  1  9D 00 DF                 STA BUFTABLE,X
+00D499  1  CA           _825        DEX                 ; ^4
+00D49A  1  10 F3                    BPL _821            ;   <3
+00D49C  1               ;
+00D49C  1               ;
+00D49C  1               ; SEEK desired track
+00D49C  1               ;
+00D49C  1  A5 FE                    LDA TRACK
+00D49E  1  4C E0 D2                 JMP SEEK
+00D4A1  1               ;
+00D4A1  1  EE AA D4     GETBYTE     INC GOTBYTE+1       ; Self-modifies L#837 LDA $FFFF
+00D4A4  1  D0 03                    BNE GOTBYTE         ; v L#837
+00D4A6  1  EE AB D4                 INC GOTBYTE+2       ; Self-modifies L#837 LDA $FFFF
+00D4A9  1  AD FF FF     GOTBYTE     LDA $FFFF           ; Self-modified @ L#834-836
+00D4AC  1  60                       RTS
+00D4AD  1               ;
+00D4AD  1               ;
+00D4AD  1               ;
+00D4AD  1                           USR "O:RW18.D000",ORG
+00D4AD  1               __END       ;END
+00D4AD  1               
